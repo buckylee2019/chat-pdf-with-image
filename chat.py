@@ -23,7 +23,6 @@ from typing import Iterator
 
 from langchain.vectorstores import Milvus
 from langchain.vectorstores import Chroma
-from LLM.huggingface import embedding
 from PIL import Image
 from dotenv import load_dotenv
 load_dotenv()
