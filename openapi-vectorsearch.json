@@ -1,0 +1,101 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+      "title": "Vector Search API",
+      "version": "1.0.0",
+      "description": "An API for performing vector-based document similarity search."
+    },
+    "servers": [
+        {
+        "url": "http://{search_url}",
+            "description": "Local Development Server",
+        "variables": {
+            "search_url": {
+              "default": "0.0.0.0:8088",
+              "description": "The portions of URL that follow http://"
+            }
+          }
+    
+        }
+    ],
+    "paths": {
+      "/vectorsearch": {
+        "post": {
+          "summary": "Perform vector-based document similarity search.",
+          "description": "Search for similar documents based on a query.",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string",
+                      "description": "The query string."
+                    },
+                    "top_k": {
+                      "type": "integer",
+                      "description": "The number of top results to retrieve."
+                    }
+                  },
+                  "required": ["query", "top_k"]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful response.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "result": {
+                        "type": "string",
+                        "description": "Search result context."
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad request. JSON data with 'query' key is required.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "error": {
+                        "type": "string",
+                        "description": "Error message."
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "description": "Internal server error.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "error": {
+                        "type": "string",
+                        "description": "Error message."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
