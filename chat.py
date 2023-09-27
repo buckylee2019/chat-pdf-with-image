@@ -22,10 +22,9 @@ from langchain.chains.query_constructor.base import AttributeInfo
 from typing import Iterator
 
 from langchain.vectorstores import Milvus
-from langchain.vectorstores import Chroma
-from PIL import Image
-from dotenv import load_dotenv
-load_dotenv()
+
+
+
 
 user_api_key = st.sidebar.text_input(
     label="#### Your Bam API key 👇",
@@ -77,16 +76,16 @@ hf = HuggingFaceHubEmbeddings(
 )
 
 
-# vectorstore = Milvus(
-#     embedding_function=hf,
-#     connection_args=MILVUS_CONNECTION
-#     )
-
-vectorstore = Chroma(
-        embedding_function=hf,
-        collection_name=INDEX_NAME,
-        persist_directory=INDEX_NAME
+vectorstore = Milvus(
+    embedding_function=hf,
+    connection_args=MILVUS_CONNECTION
     )
+
+# vectorstore = Milvus(
+#         embedding_function=hf,
+#         collection_name=INDEX_NAME,
+#         persist_directory=INDEX_NAME
+#     )
 
 def similarity_search(query: str):
 
