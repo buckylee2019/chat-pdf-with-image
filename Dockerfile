@@ -14,6 +14,6 @@ COPY requirements.txt requirements.txt
 # Install any necessary packages specified in requirements.txt.
 RUN pip install -r requirements.txt
 
-EXPOSE 8088
+EXPOSE 8501
 
-CMD [ "streamlit run", "chat.py","--server.port","8088"]
+ENTRYPOINT ["streamlit", "run", "chat.py", "--server.port=8501", "--server.address=0.0.0.0"]
