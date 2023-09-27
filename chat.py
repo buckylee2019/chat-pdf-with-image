@@ -22,9 +22,10 @@ from langchain.chains.query_constructor.base import AttributeInfo
 from typing import Iterator
 
 from langchain.vectorstores import Milvus
+from dotenv import load_dotenv
 
 
-
+load_dotenv()
 
 user_api_key = st.sidebar.text_input(
     label="#### Your Bam API key 👇",
@@ -128,13 +129,10 @@ if user_api_key:
         model = Model(WX_MODEL, params=params, credentials=creds)
         streamer = model.generate_stream([prompt])
 
-        outputs = []
-        count = 0
 
         
         for text in streamer:
-            # print(text.input_token_count) if count == 0 else outputs.append(text.generated_text)
-            # count = count + 1
+
             yield text.generated_text
 
 
@@ -166,12 +164,9 @@ if user_api_key:
                 full_response += response
                 message_placeholder.markdown(full_response + "▌")
             response_with_source = full_response
-            print(st.session_state.source[-1])
-            # for im in json.loads(st.session_state.source[-1]):
-            #     image = Image.open(im)
-            #     st.image(image=image ,width = 400)
+
+
             message_placeholder.markdown(response_with_source)
-            # st.button(label="This is not what I am looking for")
-            # message_placeholder.markdown(st.session_state.source[-1])
+
         st.session_state.messages.append((prompt,full_response))
         
