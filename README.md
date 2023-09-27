@@ -1,5 +1,3 @@
-# chat-pdf-with-image
-
 # PDF Image Text Extraction and Similarity Search with watsonx
 
 ## Prerequisites
