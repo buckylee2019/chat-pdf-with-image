@@ -47,7 +47,7 @@ To use the script, follow these steps:
     pdf2image.py
    
 
-3. The script will process the PDF document specified in the `file` variable and perform the following steps:
+3. The script will process the PDF documents specified in the `PDF_DIR` folders and perform the following steps:
 
    - Extract text from each page of the PDF.
    - Extract images from each page of the PDF and upload them to IBM COS.
@@ -97,7 +97,7 @@ If you encounter any issues or errors while running the script, consider the fol
 
 - Verify that you have correctly set up the environment variables in the `.env` file with valid credentials and URLs.
 - Ensure that the required Python libraries are installed.
-- Check if the PDF file specified in the `file` variable exists and is accessible.
+- Check if the PDF file specified in the `PDF_DIR` exists and is accessible.
 
 ## License
 

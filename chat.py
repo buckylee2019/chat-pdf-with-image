@@ -20,18 +20,19 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.retrievers.self_query.base import SelfQueryRetriever
 from langchain.chains.query_constructor.base import AttributeInfo
 from typing import Iterator
-
+from pymilvus import utility
+from pymilvus import connections
 from langchain.vectorstores import Milvus
 from dotenv import load_dotenv
 
 
 load_dotenv()
 
-user_api_key = st.sidebar.text_input(
-    label="#### Your Bam API key 👇",
-    placeholder="Paste your Bam API key, pak-",
-    type="password")
-
+# user_api_key = st.sidebar.text_input(
+#     label="#### Your Bam API key 👇",
+#     placeholder="Paste your Bam API key, pak-",
+#     type="password")
+user_api_key = os.environ.get("BAM_API_KEY")
 system_prompt = st.sidebar.text_input(
     label="System prompt for model",
     placeholder= """\
@@ -41,7 +42,7 @@ system_prompt = st.sidebar.text_input(
     """
 )
 
-INDEX_NAME =  os.environ.get("INDEX_NAME")
+
 DEFAULT_SYSTEM_PROMPT = """\
     <s>[INST] <<SYS>>You are a helpful, respectful and honest assistant. You should answer the question directly from the given documents, you are responsible for finding the best answer among all the documents. Follow the rules below:\
     Summarize the most related documents to user question using the following format, Use Markdown to display : Topic of the document, Summarization of the document, Step by Step instruction for user question, Image sources from document\
@@ -51,10 +52,6 @@ DEFAULT_SYSTEM_PROMPT = """\
     
 """
 
-clear_conversation = st.sidebar.button(
-    label="Clear conversation"
-)
-
 
 params = GenerateParams(
     decoding_method="greedy",
@@ -62,6 +59,7 @@ params = GenerateParams(
     min_new_tokens=1, 
     return_options=ReturnOptions(generated_tokens=True)
 )
+
 WX_MODEL = os.environ.get("WX_MODEL")
 creds = Credentials(user_api_key, "https://bam-api.res.ibm.com/v1")
 llm = LangChainInterface(model=WX_MODEL, credentials=creds, params=params)
@@ -69,6 +67,14 @@ repo_id = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 MILVUS_CONNECTION={"host": os.environ.get("MILVUS_HOST"), "port": os.environ.get("MILVUS_PORT")}
 HUGGINGFACEHUB_API_TOKEN = os.environ.get("HUGGINGFACEHUB_API_TOKEN")
+connections.connect(
+    host = os.environ.get("MILVUS_HOST"),
+    port = os.environ.get("MILVUS_PORT")
+)
+
+collection_name = st.sidebar.selectbox("選擇欲查詢的資料集",
+        set(utility.list_collections()))
+
 
 hf = HuggingFaceHubEmbeddings(
     task="feature-extraction",
@@ -78,15 +84,11 @@ hf = HuggingFaceHubEmbeddings(
 
 
 vectorstore = Milvus(
+    collection_name=collection_name,
     embedding_function=hf,
     connection_args=MILVUS_CONNECTION
     )
 
-# vectorstore = Milvus(
-#         embedding_function=hf,
-#         collection_name=INDEX_NAME,
-#         persist_directory=INDEX_NAME
-#     )
 
 def similarity_search(query: str):
 
@@ -109,6 +111,9 @@ def get_prompt(message: str, chat_history: list[tuple[str, str]],
     
     return  texts
 
+clear_conversation = st.sidebar.button(
+    label="Clear conversation"
+)
 
 
 if not system_prompt:
@@ -151,7 +156,7 @@ if user_api_key:
 
     if prompt := st.chat_input("What is up?"):
         # st.session_state.messages.append({"role": "user", "content": prompt})
-        generator = run(message=prompt,chat_history=st.session_state.messages[-3:],system_prompt=system_prompt)
+        generator = run(message=prompt,chat_history=st.session_state.messages[-1:],system_prompt=system_prompt)
         print(next(generator))
         with st.chat_message("user"):
             st.markdown(prompt)
