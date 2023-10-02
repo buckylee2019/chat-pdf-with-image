@@ -101,21 +101,42 @@ def extract_text_image(file):
 #         collection_name=INDEX_NAME,
 #         persist_directory=INDEX_NAME
 #     )
+
+INDEXED = False
 for pdf in glob(PDF_DIR+"*.pdf"):
     collection_name = pdf.split('/')[-1].split('.')[0]
-    documents = extract_text_image(file = pdf)
+    if not INDEXED:
+        documents = extract_text_image(file = pdf)
 
-    index = Milvus.from_documents(
-        collection_name=collection_name,
-        documents=documents,
-        embedding=hf,
-        connection_args=MILVUS_CONNECTION
-        )
-    index = Milvus(
-        collection_name=collection_name,
-        embedding_function=hf,
-        connection_args=MILVUS_CONNECTION
-        )
+        index = Milvus.from_documents(
+            collection_name=collection_name,
+            documents=documents,
+            embedding=hf,
+            index_params={
+                "metric_type":"COSINE",
+                "index_type":"IVF_FLAT",
+                "params":{"nlist":1024}
+                },
+            search_params = {
+                "metric_type": "COSINE", 
+                "offset": 5, 
+                "ignore_growing": False, 
+                "params": {"nprobe": 10}
+            },
+            connection_args=MILVUS_CONNECTION
+            )
+    else:
+        index = Milvus(
+            collection_name=collection_name,
+            embedding_function=hf,
+            connection_args=MILVUS_CONNECTION,
+            search_params = {
+                "metric_type": "L2", 
+                "offset": 5, 
+                "ignore_growing": False, 
+                "params": {"nprobe": 10}
+            }
+            )
     # index = Chroma(
     #         embedding_function=hf,
     #         collection_name=INDEX_NAME,
