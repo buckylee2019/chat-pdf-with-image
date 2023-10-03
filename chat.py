@@ -1,10 +1,10 @@
 import streamlit as st
 from streamlit_chat import message
 from genai.model import Model
-from typing import Iterator
 try:
     from langchain import PromptTemplate
-    from langchain.chains import LLMChain
+    from langchain.chains import LLMChain,RetrievalQAWithSourcesChain
+    from langchain.memory import ConversationBufferMemory
 except ImportError:
     raise ImportError("Could not import langchain: Please install ibm-generative-ai[langchain] extension.")
 from langchain.embeddings import HuggingFaceHubEmbeddings
@@ -15,18 +15,19 @@ import os
 from typing import List
 import json
 import os
-from typing import Any, Optional
-from uuid import UUID
 from langchain.callbacks.base import BaseCallbackHandler
-from typing import Iterator
 from pymilvus import utility
 from pymilvus import connections
 from langchain.vectorstores import Milvus
 from dotenv import load_dotenv
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+
 
 load_dotenv()
 
+st.set_page_config(page_title="Chat with Documents", page_icon="💡")
+st.title("Systex RAG")
+
+PREFIX_PROMPT = "<s>[INST] <<SYS>>"
 # user_api_key = st.sidebar.text_input(
 #     label="#### Your Bam API key 👇",
 #     placeholder="Paste your Bam API key, pak-",
@@ -43,11 +44,10 @@ system_prompt = st.sidebar.text_area(
 
 
 DEFAULT_SYSTEM_PROMPT = """\
-    <s>[INST] <<SYS>>You are a helpful, respectful and honest assistant. You should answer the question directly from the given documents, you are responsible for finding the best answer among all the documents. Follow the rules below:\
+    You are a helpful, respectful and honest assistant. You should answer the question directly from the given documents, you are responsible for finding the best answer among all the documents. Follow the rules below:\
     Summarize the related documents to user question using the following format, Use Markdown to display : Topic of the document, Step by Step instruction for user question, Image sources from document\
-    Display the list of Image sources of related document in the following format: ![image name](image source "IMAGE"),\
-    If the question is not related to the given context, SAY You can't provide the specific answer.\
-    Context:\
+    Display the list of Image sources of related document in the following markdown format: ![image name](image source "IMAGE"),\
+    If the question is not related to the given context, check the chat history to find answer, otherwise SAY "I can't provide the specific answer"!\
     \n\
     
 """
@@ -93,12 +93,6 @@ hf = HuggingFaceHubEmbeddings(
     huggingfacehub_api_token = HUGGINGFACEHUB_API_TOKEN,
 )
 
-# search_params={
-#                 "metric_type": "L2", 
-#                 "offset": 5, 
-#                 "ignore_growing": False, 
-#                 "params": {"nprobe": 10}
-#             },
 vectorstore = Milvus(
     collection_name=collection_name,
     embedding_function=hf,
@@ -106,26 +100,98 @@ vectorstore = Milvus(
     
     )
 
-def similarity_search(query: str):
 
+def get_prompt_template(system_prompt=system_prompt, history=False):
     
-    docs = vectorstore.similarity_search_with_score(query, k=3)
-    context = '\n'.join([f"Document {idx+1}. {doc[0].page_content} Image Source: {doc[0].metadata['image_source']}" for idx,doc in enumerate(docs) if doc[1]>0.5])
-    source = ""
-    # source += '\n'.join([f'{idx+1}. {doc.metadata["local_name"]} in {doc.metadata["data_list_source_table"]}' for idx, doc in enumerate(docs)])
-    
-    return context, source
-def get_prompt(message: str, chat_history: list[tuple[str, str]],
-               system_prompt: str) -> str:
-    # texts = [f'[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n\n']
-    history = ["Chat history:"]
-    for user_input, response in chat_history:
-        history.append(f'User: {user_input.strip()}\nAssistant: {response.strip()}')
-    chathistory= "\n".join(history)
-    texts  = f'{system_prompt}\nIf there is no result from knowledge base, you can leverage the chat history: {chathistory}<</SYS>>User question:{message.strip()}\nMarkdown:[/INST]'
-    
-    return  texts
+    B_INST, E_INST = "[INST]", "[/INST]"
+    B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
+    SYSTEM_PROMPT = B_SYS + system_prompt + E_SYS
+    document_with_metadata_prompt = PromptTemplate(
+    input_variables=["page_content", "image_source"],
+    template="\nDocument: {page_content}\n\tImage sources: {image_source}",
+)
+    if history:
+        instruction = """
+        Context: {history} \n {summaries}
+        User question: {question}
+        Answer the question in Markdown format,
+        Markdown: """
 
+        prompt_template = B_INST + SYSTEM_PROMPT + instruction + E_INST
+        prompt = PromptTemplate(input_variables=["history", "summaries", "question",], template=prompt_template)
+    else:
+        instruction = """
+        Context: {summaries}
+        User: {question}
+        Answer the question in Markdown format,
+        Markdown:
+        """
+
+        prompt_template = B_INST + SYSTEM_PROMPT + instruction + E_INST
+        prompt = PromptTemplate(input_variables=["summaries", "question"], template=prompt_template)
+    
+    memory = ConversationBufferMemory(input_key="question", memory_key="history")
+
+    return (
+        document_with_metadata_prompt,
+        prompt,
+        memory,
+    )
+
+def retrieval_qa_pipline(db, use_history, llm, system_prompt):
+    """
+    Initializes and returns a retrieval-based Question Answering (QA) pipeline.
+
+    This function sets up a QA system that retrieves relevant information using embeddings
+    from the HuggingFace library. It then answers questions based on the retrieved information.
+
+    Parameters:
+    - db (vectorestore): Specifies the preload vector db
+    - system_prompt (str): Define from default or from web UI
+    - device_type (str): Specifies the type of device where the model will run, e.g., 'cpu', 'cuda', etc.
+    - use_history (bool): Flag to determine whether to use chat history or not.
+
+    Returns:
+    - RetrievalQAWithSourcesChain: An initialized retrieval-based QA system.
+
+    Notes:
+    - The function uses embeddings from the HuggingFace library, either instruction-based or regular.
+    - The Chroma class is used to load a vector store containing pre-computed embeddings.
+    - The retriever fetches relevant documents or data based on a query.
+    - The prompt and memory, obtained from the `get_prompt_template` function, might be used in the QA system.
+    - The model is loaded onto the specified device using its ID and basename.
+    - The QA system retrieves relevant documents using the retriever and then answers questions based on those documents.
+    """
+
+    retriever = db.as_retriever(search_kwargs={'k': 3})
+
+    # get the prompt template and memory if set by the user.
+    doc_promt, prompt, memory = get_prompt_template( system_prompt=system_prompt,history=use_history)
+
+    # load the llm pipeline
+
+    if use_history:
+        qa = RetrievalQAWithSourcesChain.from_chain_type(
+            llm=llm,
+            chain_type="stuff",  # try other chains types as well. refine, map_reduce, map_rerank
+            retriever=retriever,
+            return_source_documents=True,  # verbose=True,
+            chain_type_kwargs={"prompt":prompt,
+                "document_prompt":doc_promt, "memory": memory},
+        )
+    else:
+        qa = RetrievalQAWithSourcesChain.from_chain_type(
+            llm=llm,
+            chain_type="stuff",  # try other chains types as well. refine, map_reduce, map_rerank
+            retriever=retriever,
+            return_source_documents=True,  # verbose=True,
+            chain_type_kwargs={
+                "prompt":prompt,
+                "document_prompt":doc_promt,
+            },
+        )
+
+    return qa
 clear_conversation = st.sidebar.button(
     label="Clear conversation"
 )
@@ -137,19 +203,11 @@ if user_api_key:
     if "source" not in st.session_state:
         st.session_state.source = []
 
-    def run(message: str,
-        chat_history: list[tuple[str, str]],
-        system_prompt: str) -> Iterator[str]:
-        result, source = similarity_search(message)
-        system_prompt = system_prompt + "\nContext:\n"+ result
-        prompt = get_prompt(message, chat_history, system_prompt)
-
-        st.session_state.source.append(source)
-        return prompt
-        
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
+        with st.chat_message("assistant"):
+            st.markdown("你好!\n我是精誠資訊股票分析系統專家小Q, 我能回答你操作股票系統的任何問題")
 
     if clear_conversation:
         st.session_state.messages = []
@@ -160,27 +218,25 @@ if user_api_key:
         with st.chat_message("assistant"):
             st.markdown(response)
 
-    if prompt := st.chat_input("想問什麼問題呢?"):
+    if prompt := st.chat_input("Ask your question.."):
         # st.session_state.messages.append({"role": "user", "content": prompt})
+
         with st.chat_message("user"):
             st.markdown(prompt)
-        new_prompt = run(message=prompt,chat_history=st.session_state.messages[-1:],system_prompt=system_prompt)
-        # next(generator)
-        
-        
         with st.chat_message("assistant"):
+            
             message_placeholder = st.empty()
             stream_handler = StreamHandler(message_placeholder)
+
+            
             llm = LangChainInterface(
                 model=WX_MODEL,
                 credentials=creds,
                 params=params,
                 callbacks=[stream_handler]
             )
-            response = llm(new_prompt)
-
-
-            message_placeholder.markdown(response)
-
-        st.session_state.messages.append((prompt,response))
+            qa_chain = retrieval_qa_pipline(vectorstore,True,llm,system_prompt)
+            res = qa_chain(prompt,return_only_outputs=True)
+            print(res)
+        st.session_state.messages.append((prompt,res['answer']))
         
