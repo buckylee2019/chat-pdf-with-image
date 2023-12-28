@@ -30,6 +30,7 @@ cos = ibm_boto3.resource("s3",
 HUGGINGFACEHUB_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
 MILVUS_CONNECTION={"host": os.environ.get("MILVUS_HOST"), "port": os.environ.get("MILVUS_PORT")}
+
 PDF_DIR = "/app/data/"
 wx_model = os.getenv("WX_MODEL")
 repo_id = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

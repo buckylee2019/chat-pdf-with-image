@@ -1,3 +1,5 @@
+from uuid import UUID
+from langchain.schema.output import LLMResult
 import streamlit as st
 from streamlit_chat import message
 from genai.model import Model
@@ -12,7 +14,7 @@ from genai.credentials import Credentials
 from genai.extensions.langchain import LangChainInterface
 from genai.schemas import GenerateParams, ReturnOptions
 import os
-from typing import List
+from typing import Any, List, Optional
 import json
 import os
 from langchain.callbacks.base import BaseCallbackHandler
@@ -44,11 +46,16 @@ system_prompt = st.sidebar.text_area(
 
 
 DEFAULT_SYSTEM_PROMPT = """\
-    You are a helpful, respectful and honest assistant. You should answer the question directly from the given documents, you are responsible for finding the best answer among all the documents. Follow the rules below:\
-    Summarize the related documents to user question using the following format, Use Markdown to display : Topic of the document, Step by Step instruction for user question, Image sources from document\
-    Display the list of Image sources of related document in the following markdown format: ![image name](image source "IMAGE"),\
-    If the question is not related to the given context, check the chat history to find answer, otherwise SAY "I can't provide the specific answer"!\
-    \n\
+You are an AI assistant tasked with providing answers by summarizing related documents or referring to previous chat history. You should follow these rules:
+1. Summarize the content from the provided documents, using the following format:
+
+Topic of the Document: Describe the topic of the document.
+Step by Step Instruction: Provide user question-specific instructions or information from the document.
+Image Sources from Document: If relevant, include image sources with Markdown format, like this: ![image text](image sources "IMAGE").
+
+2. If the user's question is not related to the given context, check the chat history for relevant information. If no relevant information is found in the chat history, respond with "I can't answer the question."
+
+By adhering to these rules, you will help users find accurate and valuable information.
     
 """
 
@@ -61,6 +68,9 @@ class StreamHandler(BaseCallbackHandler):
         if token:
             self.text += token
             self.container.markdown(self.text)
+    def on_llm_end(self, response: LLMResult, *, run_id: UUID, parent_run_id: UUID | None = None, **kwargs: Any) -> Any:
+        return super().on_llm_end(response, run_id=run_id, parent_run_id=parent_run_id, **kwargs)
+    
 
 params = GenerateParams(
         decoding_method="greedy",
@@ -70,6 +80,8 @@ params = GenerateParams(
         top_k=50,
         top_p=1,
     )
+
+
 
 WX_MODEL = os.environ.get("WX_MODEL")
 creds = Credentials(user_api_key, "https://bam-api.res.ibm.com/v1")
@@ -85,7 +97,7 @@ connections.connect(
 
 collection_name = st.sidebar.selectbox("選擇欲查詢的產品",
         set(utility.list_collections()))
-
+use_history = st.sidebar.checkbox(label="use mermory")
 
 hf = HuggingFaceHubEmbeddings(
     task="feature-extraction",
@@ -228,7 +240,7 @@ if user_api_key:
             message_placeholder = st.empty()
             stream_handler = StreamHandler(message_placeholder)
 
-            
+            # message_placeholder            
             llm = LangChainInterface(
                 model=WX_MODEL,
                 credentials=creds,
@@ -237,6 +249,6 @@ if user_api_key:
             )
             qa_chain = retrieval_qa_pipline(vectorstore,True,llm,system_prompt)
             res = qa_chain(prompt,return_only_outputs=True)
-            print(res)
+            
         st.session_state.messages.append((prompt,res['answer']))
         

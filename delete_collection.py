@@ -7,6 +7,6 @@ load_dotenv()
 connections.connect(
 
   host = os.environ.get("MILVUS_HOST"),
-  port = os.environ.get("MILVUS_POST")
+  port = os.environ.get("MILVUS_PORT")
 )
 utility.drop_collection("Superthunder")
